@@ -72,7 +72,25 @@ def calculate_activation_statistics(dataloader, model, classifier):
     # В целом все как в подсчете оригинального FID, но с вашей кастомной моделью классификации
     # note: не забывайте на каком девайсе у вас тензоры 
     # note2: не забывайте делать .detach()
-    # YOUR CODE
+    acts_real = []
+    acts_decoded = []
+    # Все без detach, тк calculate_fid с torch.no_grad
+    for image, _ in dataloader:
+        image = image.to(device)
+        decoded, _ = model(image)
+        acts_real.append(classifier.get_activations(image).cpu().numpy())
+        acts_decoded.append(classifier.get_activations(decoded).cpu().numpy())
+    acts_real = np.concatenate(acts_real, axis=0)
+    acts_decoded = np.concatenate(acts_decoded, axis=0)
+    m1 = np.mean(acts_real, axis=0)
+    m2 = np.mean(acts_decoded, axis=0)
+    s1 = np.cov(acts_real, rowvar=False)
+    s2 = np.cov(acts_decoded, rowvar=False)
+
+    return m1, s1, m2, s2
+
+
+
 
 @torch.no_grad()
 def calculate_fid(dataloader, model, classifier):
