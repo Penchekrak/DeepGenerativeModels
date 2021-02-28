@@ -117,7 +117,7 @@ def get_latent_data(ae, loader, train=True):
     all_labels = []
     for images, labels in loader:
         images = images.to(device)
-        lat = ae.get_latent_features(images).cpu()
+        lat = ae.get_latent_features(images).cpu().view(images.shape[0], -1)
         latent.append(lat)
         all_labels.append(labels)
     latent = torch.cat(latent, 0)
