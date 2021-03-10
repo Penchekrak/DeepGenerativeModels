@@ -66,17 +66,33 @@ def calculate_activation_statistics(dataloader, model, classifier):
     classifier.eval()
     model.eval()
     device = next(model.parameters()).device
-    
+
     # Здесь ожидается что вы пройдете по данным из даталоадера и соберете активации классификатора для реальных и сгенерированных данных
     # После этого посчитаете по ним среднее и ковариацию, по которым посчитаете frechet distance
     # В целом все как в подсчете оригинального FID, но с вашей кастомной моделью классификации
     # note: не забывайте на каком девайсе у вас тензоры 
     # note2: не забывайте делать .detach()
     # YOUR CODE
+    real_activations = []
+    fake_activations = []
+    with torch.no_grad():
+        for batch_x, batch_y in tqdm(dataloader, desc="Frechet distance calculation"):
+            batch_x = batch_x.to(device)
+            real_activations.append(classifier.get_activations(batch_x).detach().cpu().numpy())
+            fake_activations.append(classifier.get_activations(model(batch_x)).detach().cpu().numpy())
+
+    real_activations = np.vstack(real_activations)
+    fake_activations = np.vstack(fake_activations)
+    real_activations_mean = np.mean(real_activations, axis=0)
+    fake_activations_mean = np.mean(fake_activations, axis=0)
+
+    real_activations_cov = np.cov(real_activations, rowvar=False)
+    fake_activations_cov = np.cov(fake_activations, rowvar=False)
+    return real_activations_mean, real_activations_cov, fake_activations_mean, fake_activations_cov
+
 
 @torch.no_grad()
 def calculate_fid(dataloader, model, classifier):
-    
     m1, s1, m2, s2 = calculate_activation_statistics(dataloader, model, classifier)
     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
 
