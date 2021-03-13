@@ -131,8 +131,8 @@ class VanillaStarGAN(pl.LightningModule):
         return torch.sqrt(torch.sum(gradient ** 2, dim=1))
 
     def gradient_penalty(self, original_images: torch.Tensor, fake_images: torch.Tensor) -> torch.Tensor:
-        alpha = torch.rand((original_images.shape[0], 1, 1, 1), device=self.device)
-        sampled_inputs = (alpha * original_images.data + (1 - alpha) * fake_images.data).requires_grad_()
+        alpha = torch.rand((original_images.shape[0], 1, 1, 1)).type_as(original_images)
+        sampled_inputs = alpha * original_images.clone().detach().requires_grad_(True).type_as(original_images) + (1 - alpha) * fake_images.clone().detach().requires_grad_(True).type_as(original_images)
         discriminator_on_sampled_outputs, _ = self.discriminator(sampled_inputs)
         gradient_norm = self.gradient_norm(discriminator_on_sampled_outputs, sampled_inputs)
         return torch.mean((gradient_norm - 1) ** 2)
