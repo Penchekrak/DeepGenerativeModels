@@ -1,8 +1,8 @@
 import torch
 import wandb
 from torch import nn
-from .utils import (permute_labels, calculate_fid, calculate_multilabel_accuracy,
-                    create_generator_inputs)
+from utils import (permute_labels, calculate_fid, calculate_multilabel_accuracy,
+                   create_generator_inputs)
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchvision.utils import make_grid
@@ -30,7 +30,7 @@ class ResidualBlock(nn.Module):
 class Generator(nn.Module):
     """Generator network."""
 
-    def __init__(self, conv_dim=64, c_dim=5, repeat_num=6):
+    def __init__(self, conv_dim=64, c_dim=40, repeat_num=6):
         super(Generator, self).__init__()
 
         layers = []
@@ -74,7 +74,7 @@ class Generator(nn.Module):
 class Discriminator(nn.Module):
     """Discriminator network with PatchGAN."""
 
-    def __init__(self, image_size=128, conv_dim=64, c_dim=5, repeat_num=6):
+    def __init__(self, image_size=128, conv_dim=64, c_dim=40, repeat_num=6):
         super(Discriminator, self).__init__()
         layers = []
         layers.append(nn.Conv2d(3, conv_dim, kernel_size=4, stride=2, padding=1))
@@ -120,9 +120,10 @@ class VanillaStarGAN(pl.LightningModule):
         return torch.mean(torch.abs(original_images - reconstructed_images))
 
     def gradient_norm(self, outputs, inputs):
+        weights = torch.ones_like(outputs, requires_grad=False)
         gradient = torch.autograd.grad(outputs=outputs,
                                        inputs=inputs,
-                                       grad_outputs=None,
+                                       grad_outputs=weights,
                                        retain_graph=True,
                                        create_graph=True,
                                        only_inputs=True)[0]
@@ -139,29 +140,33 @@ class VanillaStarGAN(pl.LightningModule):
     # @abstractmethod
     def generator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
+        labels = labels.float()
         permuted_labels = permute_labels(labels)
 
         generator_outputs = self.generator(inputs, permuted_labels)
         discriminator_on_fake_outputs, classification_on_fake_outputs = self.discriminator(generator_outputs)
 
         adversarial_loss = self.adversarial_loss(on_real_outputs=discriminator_on_fake_outputs)
-        classification_loss = self.classification_loss(classification_on_fake_outputs, labels)
+        classification_loss = self.classification_loss(classification_on_fake_outputs, permuted_labels)
 
         reconstructed_inputs = self.generator(generator_outputs, labels)
         reconstruction_loss = self.reconstruction_loss(reconstructed_inputs, inputs)
 
         loss = adversarial_loss + self.lambda_reconstruction * reconstruction_loss + self.lambda_classification * classification_loss
 
-        return {
-            'adversarial loss': adversarial_loss,
-            'classification loss': classification_loss,
-            'reconstruction loss': reconstruction_loss,
-            'loss': loss
-        }
+        self.log_dict({
+            'generator adversarial loss': adversarial_loss,
+            'generator classification loss': classification_loss,
+            'generator reconstruction loss': reconstruction_loss,
+            'generator loss': loss
+        })
+
+        return loss
 
     # @abstractmethod
     def discriminator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
+        labels = labels.float()
         permuted_labels = permute_labels(labels)
 
         discriminator_on_real_outputs, classification_on_real_outputs = self.discriminator(inputs)
@@ -176,12 +181,13 @@ class VanillaStarGAN(pl.LightningModule):
 
         loss = adversarial_loss + self.lambda_gradient_penalty * gradient_penalty + self.lambda_classification * classification_loss
 
-        return {
-            'adversarial loss': adversarial_loss,
-            'classification loss': classification_loss,
-            'gradient penalty': gradient_penalty,
-            'loss': loss
-        }
+        self.log_dict({
+            'discriminator adversarial loss': adversarial_loss,
+            'discriminator classification loss': classification_loss,
+            'discriminator gradient penalty': gradient_penalty,
+            'discriminator loss': loss
+        })
+        return loss
 
     def __init__(
             self,
@@ -189,7 +195,7 @@ class VanillaStarGAN(pl.LightningModule):
             # original_labels: tp.List[int],
             desired_labels: torch.Tensor,
             label_names: tp.Dict[int, str],
-            discriminator_frequency: int,
+            discriminator_frequency: int = 5,
             lambda_reconstruction: float = 10.0,
             lambda_classification: float = 1.0,
             lambda_gradient_penalty: float = 10.0
@@ -207,7 +213,7 @@ class VanillaStarGAN(pl.LightningModule):
         self.lambda_classification = lambda_classification
         self.lambda_gradient_penalty = lambda_gradient_penalty
 
-        self.example_input_array = self.control_images
+        # self.example_input_array = self.control_images
 
     def on_validation_end(self) -> None:
         fid_score = calculate_fid(self.generator, self.datamodule.val_dataloader)
@@ -230,7 +236,7 @@ class VanillaStarGAN(pl.LightningModule):
     ) -> tp.Dict[str, tp.Any]:
         if optimizer_idx == 0:
             return self.generator_loss(batch)
-        if optimizer_idx == 1 and batch_idx % self.discriminator_frequency:
+        if optimizer_idx == 1:
             return self.discriminator_loss(batch)
 
     @torch.no_grad()
@@ -270,6 +276,17 @@ class VanillaStarGAN(pl.LightningModule):
             labelbottom=False
         )
         return wandb.Image(plt)
+
+    def configure_optimizers(self):
+        lr = 1e-4
+
+        opt_g = torch.optim.Adam(self.generator.parameters(), lr=lr)
+        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=lr)
+        return {'optimizer': opt_g, 'frequency': 1}, \
+            {'optimizer': opt_d, 'frequency': self.discriminator_frequency}
+
+    def forward(self, inputs):
+        return self.generator(inputs)
 
 # class VanillaStarGAN(StarGAN):
 #
