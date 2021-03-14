@@ -244,7 +244,8 @@ class VanillaStarGAN(pl.LightningModule):
             original_images: torch.Tensor,
             desired_labels: torch.Tensor
     ) -> wandb.Image:  # original_labels,
-        original_images = original_images.to(self.device)
+#         device = next(iter(self.generator.parameters())).device
+        original_images = original_images  # .to(device)
         batch_size, _, image_height, image_width = original_images.shape
         n_transforms = desired_labels.shape[0] + 1
         desired_labels = desired_labels.type_as(original_images)
@@ -254,13 +255,13 @@ class VanillaStarGAN(pl.LightningModule):
         for label in desired_labels:
             generated_images.append(
                 self.generator(
-                    original_images, label.unsqeeze(0).repeat((batch_size, 1))
+                    original_images, label.unsqueeze(0).repeat((batch_size, 1))
                 )
             )
             y_ticks_positions.append(y_ticks_positions[-1] + image_height)
             y_ticks_labels.append('\n'.join(self.label_names[i] for i, l in enumerate(label) if l > 0))
 
-        image_grid = make_grid(torch.cat(generated_images), nrow=n_transforms, normalize=True, scale_each=True)
+        image_grid = make_grid(torch.cat(generated_images), nrow=batch_size, normalize=True, scale_each=True)
         plt.imshow(image_grid.permute(1, 2, 0).cpu().numpy())
         plt.yticks(y_ticks_positions, y_ticks_labels)
         plt.tick_params(
