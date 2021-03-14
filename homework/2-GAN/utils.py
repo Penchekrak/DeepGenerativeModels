@@ -86,21 +86,10 @@ def calculate_frechet_distance(
     --   : The Frechet Distance.
     """
 
-    mu1 = torch.atleast_1d(mu1)
-    mu2 = torch.atleast_1d(mu2)
-
-    sigma1 = torch.atleast_2d(sigma1)
-    sigma2 = torch.atleast_2d(sigma2)
-
-    assert mu1.shape == mu2.shape, \
-        'Training and test mean vectors have different lengths'
-    assert sigma1.shape == sigma2.shape, \
-        'Training and test covariances have different dimensions'
-
     diff = mu1 - mu2
 
     #  + eps * torch.eye(sigma1.shape[0]).type_as(mu1)
-    eigenvals, _ = torch.eig(sigma1.dot(sigma2), eigenvectors=False)
+    eigenvals, _ = torch.eig(sigma1 @ sigma2, eigenvectors=False)
     tr_covmean = torch.sum(torch.sqrt(eigenvals[0]))
 
     return (diff.dot(diff) + torch.trace(sigma1) +
@@ -113,6 +102,7 @@ class FidScore(pl.metrics.Metric):
 
         self.classifier = classifier
         if self.classifier is None:
+            import types
             def get_activations(self_, x):
                 x = self_.conv1(x)
                 x = self_.bn1(x)
@@ -130,7 +120,7 @@ class FidScore(pl.metrics.Metric):
                 return x
 
             model = resnet101(pretrained=True, progress=False)
-            model.get_activations = get_activations
+            model.get_activations = types.MethodType(get_activations, model)
             self.classifier = model
 
         self.add_state("real_activations", default=[], dist_reduce_fx=None)
@@ -142,7 +132,7 @@ class FidScore(pl.metrics.Metric):
         self.fake_activations.append(self.classifier.get_activations(fake_images))
 
     def compute(self):
-        m1, s1, m2, s2 = calculate_activation_statistics(self.real_activations, self.fake_activations)
+        m1, s1, m2, s2 = calculate_activation_statistics(torch.cat(self.real_activations, dim=0), torch.cat(self.fake_activations, dim=0))
         fid_value = calculate_frechet_distance(m1, s1, m2, s2)
 
         return fid_value

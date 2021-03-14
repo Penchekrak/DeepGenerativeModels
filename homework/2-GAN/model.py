@@ -2,8 +2,7 @@ import torch
 import wandb
 from pytorch_lightning.metrics import Accuracy
 from torch import nn
-from utils import (permute_labels, calculate_fid, calculate_multilabel_accuracy,
-                   create_generator_inputs, FidScore)
+from utils import (permute_labels, FidScore)
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchvision.utils import make_grid
@@ -54,7 +53,7 @@ class Generator(nn.Module):
         # Up-sampling layers.
         for i in range(2):
             layers.append(nn.ConvTranspose2d(curr_dim, curr_dim // 2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim // 2, affine=True, track_running_stats=True))
+            layers.append(nn.InstanceNorm2d(curr_dim // 2, affine=True, track_running_stats=False))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim // 2
 
@@ -223,13 +222,13 @@ class VanillaStarGAN(pl.LightningModule):
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch
-        permuted_labels = permute_labels(labels)
+        permuted_labels = permute_labels(labels).float()
         # desired_labels = self.desired_labels.type_as(images)
         # for label in desired_labels
         generator_outputs = self.generator(images, permuted_labels)
         discriminator_on_real_outputs, classification_on_real_outputs = self.discriminator(images)
         self.fid(images, generator_outputs)
-        self.accuracy(labels, classification_on_real_outputs)
+        self.accuracy(torch.sigmoid(classification_on_real_outputs), labels)
         # discriminator_on_fake_outputs, classification_on_fake_outputs = self.discriminator(generator_outputs)
         return {
             'real images': images if batch_idx == 0 else None,
@@ -244,10 +243,12 @@ class VanillaStarGAN(pl.LightningModule):
         # fid_score = calculate_fid(self.generator, self.datamodule.val_dataloader)
         # discriminator_accuracy = calculate_multilabel_accuracy(self.discriminator, self.datamodule.val_dataloader)
         control_images = self.generate_images(control_images, self.desired_labels)  # , self.original_labels
+        self.log_dict({
+            'fid_score': self.fid.compute(),
+            'accuracy': self.accuracy.compute()
+        })
         self.logger.experiment.log(
             {
-                'fid_score': self.fid.compute(),
-                'accuracy': self.accuracy.compute(),
                 'control_images': control_images
             },
             step=self.current_epoch,
@@ -274,7 +275,7 @@ class VanillaStarGAN(pl.LightningModule):
         original_images = original_images  # .to(device)
         batch_size, _, image_height, image_width = original_images.shape
         desired_labels = desired_labels.type_as(original_images)
-        generated_images = []
+        generated_images = [original_images]
         y_ticks_positions = [image_height // 2]
         y_ticks_labels = ['original']
         for label in desired_labels:
@@ -284,9 +285,10 @@ class VanillaStarGAN(pl.LightningModule):
                 )
             )
             y_ticks_positions.append(y_ticks_positions[-1] + image_height)
-            y_ticks_labels.append('\n'.join(self.label_names[i] for i, l in enumerate(label) if l > 0))
+            y_ticks_labels.append('\n'.join([self.label_names[i] for i, l in enumerate(label) if l > 0]))
 
         image_grid = make_grid(torch.cat(generated_images), nrow=batch_size, normalize=True, scale_each=True)
+        plt.figure(figsize=(20,20))
         plt.imshow(image_grid.permute(1, 2, 0).cpu().numpy())
         plt.yticks(y_ticks_positions, y_ticks_labels)
         plt.tick_params(
