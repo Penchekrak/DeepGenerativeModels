@@ -36,24 +36,20 @@ def cov(
 
 @torch.no_grad()
 def calculate_activation_statistics(
-        generator: nn.Module,
-        dataloader: DataLoader,
-        classifier: nn.Module
+        real_activations: torch.Tensor,
+        fake_activations: torch.Tensor,
+        # classifier: nn.Module
 ) -> tp.Tuple[torch.Tensor, torch.Tensor, torch.Tensor, torch.Tensor]:
-    generator.eval()
-    classifier.eval()
     # device = next(generator.parameters()).device
-
-    real_activations = []
-    fake_activations = []
-    for batch_x, batch_y in dataloader:
-        batch_y = permute_labels(batch_y)
-        # batch_x = batch_x.to(device)
-        real_activations.append(classifier.get_activations(batch_x))
-        fake_activations.append(classifier.get_activations(generator(batch_x, batch_y)))
-
-    real_activations = torch.vstack(real_activations)
-    fake_activations = torch.vstack(fake_activations)
+    # classifier.to(real_images[0].device)
+    # real_activations = []
+    # fake_activations = []
+    # for real_image_batch, fake_image_batch in zip(real_images, fake_images):
+    #     real_activations.append(classifier.get_activations(real_image_batch))
+    #     fake_activations.append(classifier.get_activations(fake_image_batch))
+    #
+    # real_activations = torch.vstack(real_activations)
+    # fake_activations = torch.vstack(fake_activations)
     real_activations_mean = torch.mean(real_activations, dim=0)
     fake_activations_mean = torch.mean(fake_activations, dim=0)
 
@@ -111,52 +107,74 @@ def calculate_frechet_distance(
             torch.trace(sigma2) - 2 * tr_covmean)
 
 
-@torch.no_grad()
-def calculate_fid(
-        model: nn.Module,
-        dataloader: DataLoader,
-        support_model=None
-) -> float:
-    if support_model is None:
-        if not hasattr(calculate_fid, '_support_model'):
-            def get_activations(self, x):
-                x = self.conv1(x)
-                x = self.bn1(x)
-                x = self.relu(x)
-                x = self.maxpool(x)
+class FidScore(pl.metrics.Metric):
+    def __init__(self, compute_on_step=False, dist_sync_on_step=False, classifier: tp.Optional[nn.Module] = None):
+        super().__init__(dist_sync_on_step=dist_sync_on_step)
 
-                x = self.layer1(x)
-                x = self.layer2(x)
-                x = self.layer3(x)
-                x = self.layer4(x)
+        self.classifier = classifier
+        if self.classifier is None:
+            def get_activations(self_, x):
+                x = self_.conv1(x)
+                x = self_.bn1(x)
+                x = self_.relu(x)
+                x = self_.maxpool(x)
 
-                x = self.avgpool(x)
+                x = self_.layer1(x)
+                x = self_.layer2(x)
+                x = self_.layer3(x)
+                x = self_.layer4(x)
+
+                x = self_.avgpool(x)
                 x = torch.flatten(x, 1)
 
                 return x
 
             model = resnet101(pretrained=True, progress=False)
             model.get_activations = get_activations
-            setattr(calculate_fid, '_support_model', model)
-    else:
-        setattr(calculate_fid, '_support_model', support_model)
+            self.classifier = model
 
-    m1, s1, m2, s2 = calculate_activation_statistics(model, dataloader, getattr(calculate_fid, '_support_model'))
-    fid_value = calculate_frechet_distance(m1, s1, m2, s2)
+        self.add_state("real_activations", default=[], dist_reduce_fx=None)
+        self.add_state("fake_activations", default=[], dist_reduce_fx=None)
 
-    return fid_value.item()
+    @torch.no_grad()
+    def update(self, real_images, fake_images) -> None:
+        self.real_activations.append(self.classifier.get_activations(real_images))
+        self.fake_activations.append(self.classifier.get_activations(fake_images))
+
+    def compute(self):
+        m1, s1, m2, s2 = calculate_activation_statistics(self.real_activations, self.fake_activations)
+        fid_value = calculate_frechet_distance(m1, s1, m2, s2)
+
+        return fid_value
+
+# @torch.no_grad()
+# def calculate_fid(
+#         real_images: tp.List[torch.Tensor],
+#         fake_images: tp.List[torch.Tensor],
+#         support_model: tp.Optional[nn.Module] = None
+# ) -> float:
+#     if support_model is None:
+#         if not hasattr(calculate_fid, '_support_model'):
+#             setattr(calculate_fid, '_support_model', model)
+#     else:
+#         setattr(calculate_fid, '_support_model', support_model)
+#
+#     m1, s1, m2, s2 = calculate_activation_statistics(real_images, fake_images, getattr(calculate_fid, '_support_model'))
+#     fid_value = calculate_frechet_distance(m1, s1, m2, s2)
+#
+#     return fid_value.item()
 
 
-def calculate_multilabel_accuracy(
-        model: nn.Module,
-        dataloader: DataLoader,
-) -> float:
-    predictions = []
-    targets = []
-    for batch_x, batch_y in dataloader:
-        # batch_x = batch_x.to(device)
-        predictions.append(model(batch_x))
-        targets.append(batch_y)
-    predictions = torch.vstack(predictions)
-    targets = torch.vstack(targets)
-    return accuracy(predictions, targets).item()
+# def calculate_multilabel_accuracy(
+#         model: nn.Module,
+#         dataloader: DataLoader,
+# ) -> float:
+#     predictions = []
+#     targets = []
+#     for batch_x, batch_y in dataloader:
+#         # batch_x = batch_x.to(device)
+#         predictions.append(model(batch_x))
+#         targets.append(batch_y)
+#     predictions = torch.vstack(predictions)
+#     targets = torch.vstack(targets)
+#     return accuracy(predictions, targets).item()

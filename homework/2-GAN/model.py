@@ -1,8 +1,9 @@
 import torch
 import wandb
+from pytorch_lightning.metrics import Accuracy
 from torch import nn
 from utils import (permute_labels, calculate_fid, calculate_multilabel_accuracy,
-                   create_generator_inputs)
+                   create_generator_inputs, FidScore)
 import torch.nn.functional as F
 import pytorch_lightning as pl
 from torchvision.utils import make_grid
@@ -132,7 +133,8 @@ class VanillaStarGAN(pl.LightningModule):
 
     def gradient_penalty(self, original_images: torch.Tensor, fake_images: torch.Tensor) -> torch.Tensor:
         alpha = torch.rand((original_images.shape[0], 1, 1, 1)).type_as(original_images)
-        sampled_inputs = alpha * original_images.clone().detach().requires_grad_(True).type_as(original_images) + (1 - alpha) * fake_images.clone().detach().requires_grad_(True).type_as(original_images)
+        sampled_inputs = alpha * original_images.clone().detach().requires_grad_(True) + (
+                1 - alpha) * fake_images.clone().detach().requires_grad_(True)
         discriminator_on_sampled_outputs, _ = self.discriminator(sampled_inputs)
         gradient_norm = self.gradient_norm(discriminator_on_sampled_outputs, sampled_inputs)
         return torch.mean((gradient_norm - 1) ** 2)
@@ -140,6 +142,7 @@ class VanillaStarGAN(pl.LightningModule):
     # @abstractmethod
     def generator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
+        labels = labels.float()
         permuted_labels = permute_labels(labels)
 
         generator_outputs = self.generator(inputs, permuted_labels)
@@ -165,6 +168,7 @@ class VanillaStarGAN(pl.LightningModule):
     # @abstractmethod
     def discriminator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
+        labels = labels.float()
         permuted_labels = permute_labels(labels)
 
         discriminator_on_real_outputs, classification_on_real_outputs = self.discriminator(inputs)
@@ -197,7 +201,7 @@ class VanillaStarGAN(pl.LightningModule):
             lambda_reconstruction: float = 10.0,
             lambda_classification: float = 1.0,
             lambda_gradient_penalty: float = 10.0,
-                    *args, **kwargs
+            *args, **kwargs
     ):
         super(VanillaStarGAN, self).__init__(*args, **kwargs)
         self.discriminator_frequency = discriminator_frequency
@@ -212,16 +216,38 @@ class VanillaStarGAN(pl.LightningModule):
         self.lambda_classification = lambda_classification
         self.lambda_gradient_penalty = lambda_gradient_penalty
 
+        self.accuracy = Accuracy(compute_on_step=False)
+        self.fid = FidScore(compute_on_step=False)
+
         # self.example_input_array = self.control_images
 
-    def on_epoch_end(self) -> None:
-        fid_score = calculate_fid(self.generator, self.datamodule.val_dataloader())
-        discriminator_accuracy = calculate_multilabel_accuracy(self.discriminator, self.datamodule.val_dataloader())
-        control_images = self.generate_images(self.control_images, self.desired_labels)  # , self.original_labels
+    def validation_step(self, batch, batch_idx):
+        images, labels = batch
+        permuted_labels = permute_labels(labels)
+        # desired_labels = self.desired_labels.type_as(images)
+        # for label in desired_labels
+        generator_outputs = self.generator(images, permuted_labels)
+        discriminator_on_real_outputs, classification_on_real_outputs = self.discriminator(images)
+        self.fid(images, generator_outputs)
+        self.accuracy(labels, classification_on_real_outputs)
+        # discriminator_on_fake_outputs, classification_on_fake_outputs = self.discriminator(generator_outputs)
+        return {
+            'real images': images if batch_idx == 0 else None,
+        }
+
+    def validation_epoch_end(self, outputs: tp.List[tp.Any]) -> None:
+        n_images = 5
+        for output in outputs:
+            if output['real images'] is not None:
+                control_images = output['real images'][0:n_images]
+                break
+        # fid_score = calculate_fid(self.generator, self.datamodule.val_dataloader)
+        # discriminator_accuracy = calculate_multilabel_accuracy(self.discriminator, self.datamodule.val_dataloader)
+        control_images = self.generate_images(control_images, self.desired_labels)  # , self.original_labels
         self.logger.experiment.log(
             {
-                'fid_score': fid_score,
-                'accuracy': discriminator_accuracy,
+                'fid_score': self.fid.compute(),
+                'accuracy': self.accuracy.compute(),
                 'control_images': control_images
             },
             step=self.current_epoch,
@@ -244,10 +270,9 @@ class VanillaStarGAN(pl.LightningModule):
             original_images: torch.Tensor,
             desired_labels: torch.Tensor
     ) -> wandb.Image:  # original_labels,
-#         device = next(iter(self.generator.parameters())).device
+        #         device = next(iter(self.generator.parameters())).device
         original_images = original_images  # .to(device)
         batch_size, _, image_height, image_width = original_images.shape
-        n_transforms = desired_labels.shape[0] + 1
         desired_labels = desired_labels.type_as(original_images)
         generated_images = []
         y_ticks_positions = [image_height // 2]
