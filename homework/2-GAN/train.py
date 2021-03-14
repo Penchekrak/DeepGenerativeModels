@@ -1,6 +1,7 @@
 from pytorch_lightning import Trainer, LightningDataModule
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
+from pytorch_lightning.plugins import DDPPlugin
 import model as m
 
 import numpy as np
@@ -66,6 +67,7 @@ images, labels = torch.cat(images, 0), torch.cat(labels, 0)
 logger = WandbLogger(project='GAN-homework_2-GAN', save_dir=None, log_model=True)
 model_checkpointer = ModelCheckpoint(dirpath='wandb', monitor='fid_score', save_weights_only=True)
 trainer = Trainer(logger=logger, callbacks=[model_checkpointer], log_every_n_steps=20, gpus=2, accelerator='ddp',
+                  plugins=DDPPlugin(find_unused_parameters=False),
                   max_epochs=30)
 model = m.VanillaStarGAN(images, labels, index2attr)
 
