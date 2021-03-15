@@ -70,7 +70,7 @@ labels = torch.cat(labels, 0)
 
 logger = WandbLogger(project='GAN-homework_2-GAN', save_dir=None, log_model=True)
 model_checkpointer = ModelCheckpoint(dirpath='wandb', monitor='fid_score', save_weights_only=True)
-trainer = Trainer(logger=logger, callbacks=[model_checkpointer], log_every_n_steps=20, gpus=2, accelerator='ddp',
+trainer = Trainer(logger=logger, callbacks=[model_checkpointer], log_every_n_steps=20, gpus=[1, 3], accelerator='ddp',
                   plugins=DDPPlugin(find_unused_parameters=True),
                   max_epochs=30)
 model = m.VanillaStarGAN(images, labels, index2attr)
