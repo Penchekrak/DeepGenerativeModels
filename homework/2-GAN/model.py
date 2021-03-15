@@ -251,7 +251,6 @@ class VanillaStarGAN(pl.LightningModule):
             {
                 'control_images': control_images
             },
-            step=self.current_epoch,
         )
 
     def training_step(

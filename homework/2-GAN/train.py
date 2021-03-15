@@ -3,7 +3,8 @@ from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins import DDPPlugin
 import model as m
-
+import os
+os.environ["CUDA_DEVICE_ORDER"]="PCI_BUS_ID"
 import numpy as np
 import torchvision
 
@@ -25,7 +26,7 @@ attr2index = {j: i for i, j in enumerate(attrs.split())}
 my_beloved_indices = [attr2index[j] for j in my_beloved_attrs]
 
 index2attr = {i: j for i, j in enumerate(my_beloved_attrs)}
-
+attr2index = {j: i for i, j in enumerate(my_beloved_attrs)}
 
 def get_beloved_attrs(labels):
     return labels[my_beloved_indices]
@@ -64,8 +65,9 @@ for i, (image, label) in zip(range(5), torchvision.datasets.CelebA('celeba', tar
 images = torch.cat(images, 0)
 labels = []
 for attr in my_beloved_attrs:
-    label = torch.zeros(len(my_beloved_attrs), dtype=torch.int)
-    label[attr2index[attr]] = 1
+    label = torch.zeros((1, len(my_beloved_attrs)), dtype=torch.int)
+    label[0, attr2index[attr]] = 1
+    labels.append(label)
 labels = torch.cat(labels, 0)
 
 logger = WandbLogger(project='GAN-homework_2-GAN', save_dir=None, log_model=True)
