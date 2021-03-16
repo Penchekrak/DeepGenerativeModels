@@ -89,8 +89,8 @@ def calculate_frechet_distance(
     diff = mu1 - mu2
 
     #  + eps * torch.eye(sigma1.shape[0]).type_as(mu1)
-    eigenvals, _ = torch.eig(sigma1 @ sigma2, eigenvectors=False)
-    tr_covmean = torch.sum(torch.sqrt(eigenvals[0]))
+    eigenvals, _ = torch.eig(sigma1 @ sigma2 + eps * torch.eye(*sigma1.shape, device=sigma1.device), eigenvectors=False)
+    tr_covmean = torch.sum(torch.sqrt(eigenvals[:, 0]))
 
     return (diff.dot(diff) + torch.trace(sigma1) +
             torch.trace(sigma2) - 2 * tr_covmean)

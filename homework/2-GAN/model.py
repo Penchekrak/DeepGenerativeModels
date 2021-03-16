@@ -1,3 +1,6 @@
+import inspect
+from argparse import ArgumentParser, Namespace, Action
+
 import torch
 import wandb
 from pytorch_lightning.metrics import Accuracy
@@ -8,7 +11,6 @@ import pytorch_lightning as pl
 from torchvision.utils import make_grid
 import typing as tp
 import matplotlib.pyplot as plt
-from pytorch_lightning.loggers import WandbLogger
 
 
 class ResidualBlock(nn.Module):
@@ -18,10 +20,10 @@ class ResidualBlock(nn.Module):
         super(ResidualBlock, self).__init__()
         self.main = nn.Sequential(
             nn.Conv2d(dim_in, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True),
+            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=False),
             nn.ReLU(inplace=True),
             nn.Conv2d(dim_out, dim_out, kernel_size=3, stride=1, padding=1, bias=False),
-            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=True))
+            nn.InstanceNorm2d(dim_out, affine=True, track_running_stats=False))
 
     def forward(self, x):
         return x + self.main(x)
@@ -35,14 +37,14 @@ class Generator(nn.Module):
 
         layers = []
         layers.append(nn.Conv2d(3 + c_dim, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
-        layers.append(nn.InstanceNorm2d(conv_dim, affine=True, track_running_stats=True))
+        layers.append(nn.InstanceNorm2d(conv_dim, affine=True, track_running_stats=False))
         layers.append(nn.ReLU(inplace=True))
 
         # Down-sampling layers.
         curr_dim = conv_dim
         for i in range(2):
             layers.append(nn.Conv2d(curr_dim, curr_dim * 2, kernel_size=4, stride=2, padding=1, bias=False))
-            layers.append(nn.InstanceNorm2d(curr_dim * 2, affine=True, track_running_stats=True))
+            layers.append(nn.InstanceNorm2d(curr_dim * 2, affine=True, track_running_stats=False))
             layers.append(nn.ReLU(inplace=True))
             curr_dim = curr_dim * 2
 
@@ -98,13 +100,101 @@ class Discriminator(nn.Module):
         return out_src, out_cls.view(out_cls.size(0), out_cls.size(1))
 
 
+class TupleFactory(Action):
+    def __init__(self, option_strings, dest, nargs, **kwargs):
+        super(TupleFactory, self).__init__(option_strings, dest, nargs, **kwargs)
+        self.dest = dest
+
+    def make_tuple(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, tuple(values))
+
+
 class VanillaStarGAN(pl.LightningModule):
+    @classmethod
+    def add_argparse_args(cls, parent_parser: ArgumentParser) -> ArgumentParser:
+        # attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat',
+        #     'Mustache']
+        # image_shape: tp.Tuple[int, int] = (128, 128)
+        conv_dim: int = 64
+        repeat_num: int = 6
+        discriminator_frequency: int = 5
+        lambda_reconstruction: float = 10.0
+        lambda_classification: float = 1.0
+        lambda_gradient_penalty: float = 10.0
+        parser = parent_parser.add_argument_group("GoodGAN")
+        # parser.add_argument('--attributes', nargs='+', default=attributes)
+        # parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
+        parser.add_argument('--discriminator_frequency', default=discriminator_frequency)
+        parser.add_argument('--conv_dim', default=conv_dim)
+        parser.add_argument('--repeat_num', default=repeat_num)
+        parser.add_argument('--lambda_reconstruction', default=lambda_reconstruction)
+        parser.add_argument('--lambda_classification', default=lambda_classification)
+        parser.add_argument('--lambda_gradient_penalty', default=lambda_gradient_penalty)
+        return parent_parser
 
-    def build_discriminator(self, image_shape: tp.Tuple[int]) -> nn.Module:
-        return Discriminator()
+    @classmethod
+    def from_argparse_args(cls, args: tp.Union[Namespace, ArgumentParser], **kwargs):
+        if isinstance(args, ArgumentParser):
+            args = cls.parse_argparser(args)
+        params = vars(args)
 
-    def build_generator(self, image_shape: tp.Tuple[int]) -> nn.Module:
-        return Generator()
+        valid_kwargs = inspect.signature(cls.__init__).parameters
+        module_kwargs = dict((name, params[name]) for name in valid_kwargs if name in params)
+        module_kwargs.update(**kwargs)
+
+        return cls(**module_kwargs)
+
+    def __init__(
+            self,
+            attributes: tp.List[str] = ['Bald', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat',
+                'Mustache'],
+            image_shape: tp.Tuple[int, int] = (128, 128),
+            conv_dim: int = 64,
+            repeat_num: int = 6,
+            discriminator_frequency: int = 5,
+            lambda_reconstruction: float = 10.0,
+            lambda_classification: float = 1.0,
+            lambda_gradient_penalty: float = 10.0,
+            *args, **kwargs
+    ):
+        super(VanillaStarGAN, self).__init__(*args, **kwargs)
+
+        self.save_hyperparameters(dict(
+            discriminator_frequency=discriminator_frequency,
+            lambda_reconstruction=lambda_reconstruction,
+            lambda_classification=lambda_classification,
+            lambda_gradient_penalty=lambda_gradient_penalty,
+            conv_dim=conv_dim,
+            repeat_num=repeat_num,
+            image_shape=image_shape,
+            label_names=attributes
+        ))
+
+        self.desired_labels = torch.eye(len(attributes))
+        self.label_names = attributes
+        self.discriminator = self.build_discriminator(image_shape, conv_dim, len(attributes), repeat_num)
+        self.generator = self.build_generator(image_shape, conv_dim, len(attributes), repeat_num)
+
+        self.accuracy = Accuracy(compute_on_step=False)
+        self.fid = FidScore(compute_on_step=False)
+
+    def build_discriminator(
+            self,
+            image_shape: tp.Tuple[int, int],
+            conv_dim: int,
+            c_dim: int,
+            repeat_num: int
+    ) -> nn.Module:
+        return Discriminator(image_size=max(image_shape), conv_dim=conv_dim, c_dim=c_dim, repeat_num=repeat_num)
+
+    def build_generator(
+            self,
+            image_shape: tp.Tuple[int, int],
+            conv_dim: int,
+            c_dim: int,
+            repeat_num: int
+    ) -> nn.Module:
+        return Generator(conv_dim=conv_dim, c_dim=c_dim, repeat_num=repeat_num)
 
     def adversarial_loss(self, on_real_outputs: torch.Tensor,
                          on_fake_outputs: tp.Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -138,7 +228,6 @@ class VanillaStarGAN(pl.LightningModule):
         gradient_norm = self.gradient_norm(discriminator_on_sampled_outputs, sampled_inputs)
         return torch.mean((gradient_norm - 1) ** 2)
 
-    # @abstractmethod
     def generator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
         labels = labels.float()
@@ -153,7 +242,9 @@ class VanillaStarGAN(pl.LightningModule):
         reconstructed_inputs = self.generator(generator_outputs, labels)
         reconstruction_loss = self.reconstruction_loss(reconstructed_inputs, inputs)
 
-        loss = adversarial_loss + self.lambda_reconstruction * reconstruction_loss + self.lambda_classification * classification_loss
+        loss = adversarial_loss + \
+               self.hparams.lambda_reconstruction * reconstruction_loss + \
+               self.hparams.lambda_classification * classification_loss
 
         self.log_dict({
             'generator adversarial loss': adversarial_loss,
@@ -165,6 +256,7 @@ class VanillaStarGAN(pl.LightningModule):
         return loss
 
     # @abstractmethod
+
     def discriminator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
         inputs, labels = batch
         labels = labels.float()
@@ -180,7 +272,9 @@ class VanillaStarGAN(pl.LightningModule):
         adversarial_loss = self.adversarial_loss(discriminator_on_real_outputs, discriminator_on_fake_outputs)
         gradient_penalty = self.gradient_penalty(inputs, generator_outputs)
 
-        loss = adversarial_loss + self.lambda_gradient_penalty * gradient_penalty + self.lambda_classification * classification_loss
+        loss = adversarial_loss + \
+               self.hparams.lambda_gradient_penalty * gradient_penalty + \
+               self.hparams.lambda_classification * classification_loss
 
         self.log_dict({
             'discriminator adversarial loss': adversarial_loss,
@@ -189,36 +283,6 @@ class VanillaStarGAN(pl.LightningModule):
             'discriminator loss': loss
         })
         return loss
-
-    def __init__(
-            self,
-            control_images: torch.Tensor,
-            # original_labels: tp.List[int],
-            desired_labels: torch.Tensor,
-            label_names: tp.Dict[int, str],
-            discriminator_frequency: int = 5,
-            lambda_reconstruction: float = 10.0,
-            lambda_classification: float = 1.0,
-            lambda_gradient_penalty: float = 10.0,
-            *args, **kwargs
-    ):
-        super(VanillaStarGAN, self).__init__(*args, **kwargs)
-        self.discriminator_frequency = discriminator_frequency
-        self.control_images = control_images
-        # self.original_labels = original_labels
-        self.desired_labels = desired_labels
-        self.label_names = label_names
-        self.image_shape = control_images.shape[1:]
-        self.discriminator = self.build_discriminator(self.image_shape)
-        self.generator = self.build_generator(self.image_shape)
-        self.lambda_reconstruction = lambda_reconstruction
-        self.lambda_classification = lambda_classification
-        self.lambda_gradient_penalty = lambda_gradient_penalty
-
-        self.accuracy = Accuracy(compute_on_step=False)
-        self.fid = FidScore(compute_on_step=False)
-
-        # self.example_input_array = self.control_images
 
     def validation_step(self, batch, batch_idx):
         images, labels = batch
@@ -240,16 +304,15 @@ class VanillaStarGAN(pl.LightningModule):
             if output['real images'] is not None:
                 control_images = output['real images'][0:n_images]
                 break
-        # fid_score = calculate_fid(self.generator, self.datamodule.val_dataloader)
-        # discriminator_accuracy = calculate_multilabel_accuracy(self.discriminator, self.datamodule.val_dataloader)
+
         control_images = self.generate_images(control_images, self.desired_labels)  # , self.original_labels
         self.log_dict({
-            'fid_score': self.fid.compute(),
-            'accuracy': self.accuracy.compute()
+            'fid score': self.fid.compute(),
+            'discriminator accuracy': self.accuracy.compute()
         })
         self.logger.experiment.log(
             {
-                'control_images': control_images
+                'control images': control_images
             },
         )
 
@@ -287,7 +350,7 @@ class VanillaStarGAN(pl.LightningModule):
             y_ticks_labels.append('\n'.join([self.label_names[i] for i, l in enumerate(label) if l > 0]))
 
         image_grid = make_grid(torch.cat(generated_images), nrow=batch_size, normalize=True, scale_each=True)
-        plt.figure(figsize=(20,20))
+        plt.figure(figsize=(20, 20))
         plt.imshow(image_grid.permute(1, 2, 0).cpu().numpy())
         plt.yticks(y_ticks_positions, y_ticks_labels)
         plt.tick_params(
@@ -309,7 +372,7 @@ class VanillaStarGAN(pl.LightningModule):
         opt_g = torch.optim.Adam(self.generator.parameters(), lr=lr)
         opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=lr)
         return {'optimizer': opt_g, 'frequency': 1}, \
-            {'optimizer': opt_d, 'frequency': self.discriminator_frequency}
+            {'optimizer': opt_d, 'frequency': self.hparams.discriminator_frequency}
 
     def forward(self, inputs):
         return self.generator(inputs)
