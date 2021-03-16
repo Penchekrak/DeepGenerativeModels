@@ -105,14 +105,14 @@ class TupleFactory(Action):
         super(TupleFactory, self).__init__(option_strings, dest, nargs, **kwargs)
         self.dest = dest
 
-    def make_tuple(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, tuple(values))
+    def __call__(self, parser, namespace, values, option_string=None):
+        setattr(namespace, self.dest, tuple(map(int, values)))
 
 
 class VanillaStarGAN(pl.LightningModule):
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser) -> ArgumentParser:
-        attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat', 'Mustache']
+        attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Young']
         image_shape: tp.Tuple[int, int] = (128, 128)
         conv_dim: int = 64
         repeat_num: int = 6

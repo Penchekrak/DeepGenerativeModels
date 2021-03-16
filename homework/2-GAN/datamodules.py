@@ -13,8 +13,7 @@ class CelebaDataModule(LightningDataModule):
             batch_size: int = 32,
             num_workers: int = 32,
             validation_len: tp.Union[int, float] = 500,
-            attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat',
-                'Mustache'],
+            attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Young'],
             **kwargs
     ):
         self.transforms = torchvision.transforms.Compose([
