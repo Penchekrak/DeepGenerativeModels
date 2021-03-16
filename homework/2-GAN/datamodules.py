@@ -37,7 +37,7 @@ class CelebaDataModule(LightningDataModule):
         return label[self.label_subset_indices]
 
     def setup(self, stage=None):
-        self.celeba = torchvision.datasets.CelebA('celeba', target_type='attr', transform=self.transforms,
+        self.celeba = torchvision.datasets.CelebA(self.data_dir, target_type='attr', transform=self.transforms,
                                                   target_transform=self.target_transform, download=True)
         if isinstance(self.validation_len, float):
             self.validation_len = int(self.validation_len * len(self.celeba))
