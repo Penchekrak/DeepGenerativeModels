@@ -112,9 +112,8 @@ class TupleFactory(Action):
 class VanillaStarGAN(pl.LightningModule):
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser) -> ArgumentParser:
-        # attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat',
-        #     'Mustache']
-        # image_shape: tp.Tuple[int, int] = (128, 128)
+        attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat', 'Mustache']
+        image_shape: tp.Tuple[int, int] = (128, 128)
         conv_dim: int = 64
         repeat_num: int = 6
         discriminator_frequency: int = 5
@@ -122,8 +121,8 @@ class VanillaStarGAN(pl.LightningModule):
         lambda_classification: float = 1.0
         lambda_gradient_penalty: float = 10.0
         parser = parent_parser.add_argument_group("GoodGAN")
-        # parser.add_argument('--attributes', nargs='+', default=attributes)
-        # parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
+        parser.add_argument('--attributes', nargs='+', default=attributes)
+        parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
         parser.add_argument('--discriminator_frequency', default=discriminator_frequency)
         parser.add_argument('--conv_dim', default=conv_dim)
         parser.add_argument('--repeat_num', default=repeat_num)
@@ -146,8 +145,7 @@ class VanillaStarGAN(pl.LightningModule):
 
     def __init__(
             self,
-            attributes: tp.List[str] = ['Bald', 'Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Wearing_Hat',
-                'Mustache'],
+            attributes: tp.List[str],
             image_shape: tp.Tuple[int, int] = (128, 128),
             conv_dim: int = 64,
             repeat_num: int = 6,
@@ -305,7 +303,7 @@ class VanillaStarGAN(pl.LightningModule):
                 control_images = output['real images'][0:n_images]
                 break
 
-        control_images = self.generate_images(control_images, self.desired_labels)  # , self.original_labels
+        control_images = self.generate_images(control_images, self.desired_labels)
         self.log('fid score', self.fid)
         self.log('discriminator accuracy', self.accuracy)
         self.logger.experiment.log(
