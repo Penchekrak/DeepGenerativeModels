@@ -63,7 +63,7 @@ def calculate_frechet_distance(
         sigma1: torch.Tensor,
         mu2: torch.Tensor,
         sigma2: torch.Tensor,
-        eps: float = 1e-6
+        eps: float = 1e-8
 ) -> torch.Tensor:
     """Numpy implementation of the Frechet Distance.
     The Frechet distance between two multivariate Gaussians X_1 ~ N(mu_1, C_1)
@@ -88,8 +88,8 @@ def calculate_frechet_distance(
 
     diff = mu1 - mu2
 
-    #  + eps * torch.eye(sigma1.shape[0]).type_as(mu1)
-    eigenvals, _ = torch.eig(sigma1 @ sigma2, eigenvectors=False)
+    offset = eps * torch.eye(*sigma1.shape, device=sigma1.device)
+    eigenvals, _ = torch.eig((sigma1 + offset) @ (sigma2 + offset), eigenvectors=False)
     tr_covmean = torch.sum(torch.sqrt(torch.abs(eigenvals[:, 0])))
 
     return (diff.dot(diff) + torch.trace(sigma1) +
@@ -132,7 +132,8 @@ class FidScore(pl.metrics.Metric):
         self.fake_activations.append(self.classifier.get_activations(fake_images))
 
     def compute(self):
-        m1, s1, m2, s2 = calculate_activation_statistics(torch.cat(self.real_activations, dim=0), torch.cat(self.fake_activations, dim=0))
+        m1, s1, m2, s2 = calculate_activation_statistics(torch.cat(self.real_activations, dim=0),
+                                                         torch.cat(self.fake_activations, dim=0))
         fid_value = calculate_frechet_distance(m1, s1, m2, s2)
 
         return fid_value
