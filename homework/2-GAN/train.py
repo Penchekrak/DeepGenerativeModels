@@ -1,7 +1,7 @@
 import os
 from argparse import ArgumentParser
 
-from pytorch_lightning import Trainer
+from pytorch_lightning import Trainer, seed_everything
 from pytorch_lightning.loggers import WandbLogger
 from pytorch_lightning.callbacks import ModelCheckpoint
 from pytorch_lightning.plugins import DDPPlugin
@@ -21,6 +21,8 @@ def main(args):
 
 if __name__ == '__main__':
     os.environ["CUDA_DEVICE_ORDER"] = "PCI_BUS_ID"
+    seed_everything(42)
+
     parser = ArgumentParser()
     parser.add_argument('--project_name', default='GAN-homework_2-GAN')
     parser.add_argument('--monitor', default='fid score')
