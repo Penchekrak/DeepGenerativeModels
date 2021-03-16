@@ -120,6 +120,7 @@ class VanillaStarGAN(pl.LightningModule):
         lambda_reconstruction: float = 10.0
         lambda_classification: float = 1.0
         lambda_gradient_penalty: float = 10.0
+        lr: float = 1e-4
         parser = parent_parser.add_argument_group("GoodGAN")
         parser.add_argument('--attributes', nargs='+', default=attributes)
         parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
@@ -129,6 +130,7 @@ class VanillaStarGAN(pl.LightningModule):
         parser.add_argument('--lambda_reconstruction', default=lambda_reconstruction)
         parser.add_argument('--lambda_classification', default=lambda_classification)
         parser.add_argument('--lambda_gradient_penalty', default=lambda_gradient_penalty)
+        parser.add_argument('--lr', default=lr)
         return parent_parser
 
     @classmethod
@@ -153,6 +155,7 @@ class VanillaStarGAN(pl.LightningModule):
             lambda_reconstruction: float = 10.0,
             lambda_classification: float = 1.0,
             lambda_gradient_penalty: float = 10.0,
+            lr: float = 1e-4,
             *args, **kwargs
     ):
         super(VanillaStarGAN, self).__init__(*args, **kwargs)
@@ -165,7 +168,8 @@ class VanillaStarGAN(pl.LightningModule):
             conv_dim=conv_dim,
             repeat_num=repeat_num,
             image_shape=image_shape,
-            label_names=attributes
+            label_names=attributes,
+            lr=lr
         ))
 
         self.desired_labels = torch.eye(len(attributes))
@@ -282,7 +286,11 @@ class VanillaStarGAN(pl.LightningModule):
         })
         return loss
 
-    def validation_step(self, batch, batch_idx):
+    def validation_step(
+            self,
+            batch: tp.Tuple[torch.Tensor, torch.Tensor],
+            batch_idx: int
+    ):
         images, labels = batch
         permuted_labels = permute_labels(labels).float()
         # desired_labels = self.desired_labels.type_as(images)
@@ -363,71 +371,10 @@ class VanillaStarGAN(pl.LightningModule):
         return wandb.Image(plt)
 
     def configure_optimizers(self):
-        lr = 1e-4
-
-        opt_g = torch.optim.Adam(self.generator.parameters(), lr=lr)
-        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=lr)
+        opt_g = torch.optim.Adam(self.generator.parameters(), lr=self.hparams.lr)
+        opt_d = torch.optim.Adam(self.discriminator.parameters(), lr=self.hparams.lr)
         return {'optimizer': opt_g, 'frequency': 1}, \
             {'optimizer': opt_d, 'frequency': self.hparams.discriminator_frequency}
 
     def forward(self, inputs):
         return self.generator(inputs)
-
-# class VanillaStarGAN(StarGAN):
-#
-#     def build_discriminator(self, image_shape: tp.Tuple[int]) -> nn.Module:
-#         pass
-#
-#     def build_generator(self, image_shape: tp.Tuple[int]) -> nn.Module:
-#         pass
-#
-#     def generator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
-#         pass
-#
-#     def discriminator_loss(self, batch: tp.Tuple[torch.Tensor, torch.Tensor]) -> tp.Dict[str, tp.Any]:
-#         pass
-# class Generator(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         # YOUR CODE
-#
-#     def forward(self, x, labels):
-#         # YOUR CODE
-#
-#
-# class Critic(nn.Module):
-#     def __init__(self):
-#         super().__init__()
-#         # YOUR CODE
-#
-#     def forward(self, x):
-#         # YOUR CODE
-#
-#
-# class StarGAN:
-#     def __init__(self):
-#         self.G = Generator()
-#         self.D = Critic()
-#
-#         # YOUR CODE
-#
-#     def train(self):
-#         self.G.train()
-#         self.D.train()
-#
-#     def eval(self):
-#         self.G.eval()
-#         self.D.eval()
-#
-#     def to(self, device):
-#         self.D.to(device)
-#         self.G.to(device)
-#
-#     def trainG(self, image, label):
-#         # YOUR CODE
-#
-#     def trainD(self, image, label):
-#         # YOUR CODE
-#
-#     def generate(self, image, label):
-#         # YOUR CODE
