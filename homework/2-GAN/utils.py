@@ -1,9 +1,7 @@
 import torch
 from torch import nn
 import pytorch_lightning as pl
-from torchvision.models.resnet import resnet101
-from torch.utils.data import DataLoader
-from pytorch_lightning.metrics.functional.accuracy import accuracy
+from torchvision.models.resnet import resnet50
 import typing as tp
 
 
@@ -119,7 +117,7 @@ class FidScore(pl.metrics.Metric):
 
                 return x
 
-            model = resnet101(pretrained=True, progress=False)
+            model = resnet50(pretrained=True, progress=False)
             model.get_activations = types.MethodType(get_activations, model)
             self.classifier = model
 
