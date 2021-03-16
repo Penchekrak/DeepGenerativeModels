@@ -96,7 +96,7 @@ def calculate_frechet_distance(
 
 class FidScore(pl.metrics.Metric):
     def __init__(self, compute_on_step=False, dist_sync_on_step=False, classifier: tp.Optional[nn.Module] = None):
-        super().__init__(dist_sync_on_step=dist_sync_on_step)
+        super().__init__(compute_on_step=compute_on_step, dist_sync_on_step=dist_sync_on_step)
 
         self.classifier = classifier
         if self.classifier is None:

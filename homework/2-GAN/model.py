@@ -306,10 +306,8 @@ class VanillaStarGAN(pl.LightningModule):
                 break
 
         control_images = self.generate_images(control_images, self.desired_labels)  # , self.original_labels
-        self.log_dict({
-            'fid score': self.fid.compute(),
-            'discriminator accuracy': self.accuracy.compute()
-        })
+        self.log('fid score', self.fid)
+        self.log('discriminator accuracy', self.accuracy)
         self.logger.experiment.log(
             {
                 'control images': control_images
