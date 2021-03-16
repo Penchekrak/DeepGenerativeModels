@@ -101,6 +101,8 @@ class FidScore(pl.metrics.Metric):
         self.classifier = classifier
         if self.classifier is None:
             import types
+
+            @torch.no_grad()
             def get_activations(self_, x):
                 x = self_.conv1(x)
                 x = self_.bn1(x)
@@ -118,6 +120,7 @@ class FidScore(pl.metrics.Metric):
                 return x
 
             model = resnet50(pretrained=True, progress=False)
+            model.requires_grad_(False)
             model.get_activations = types.MethodType(get_activations, model)
             self.classifier = model
 
