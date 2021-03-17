@@ -124,13 +124,13 @@ class VanillaStarGAN(pl.LightningModule):
         parser = parent_parser.add_argument_group("GoodGAN")
         parser.add_argument('--attributes', nargs='+', default=attributes)
         parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
-        parser.add_argument('--discriminator_frequency', default=discriminator_frequency)
-        parser.add_argument('--conv_dim', default=conv_dim)
-        parser.add_argument('--repeat_num', default=repeat_num)
-        parser.add_argument('--lambda_reconstruction', default=lambda_reconstruction)
-        parser.add_argument('--lambda_classification', default=lambda_classification)
-        parser.add_argument('--lambda_gradient_penalty', default=lambda_gradient_penalty)
-        parser.add_argument('--lr', default=lr)
+        parser.add_argument('--discriminator_frequency', default=discriminator_frequency, type=int)
+        parser.add_argument('--conv_dim', default=conv_dim, type=int)
+        parser.add_argument('--repeat_num', default=repeat_num, type=int)
+        parser.add_argument('--lambda_reconstruction', default=lambda_reconstruction, type=float)
+        parser.add_argument('--lambda_classification', default=lambda_classification, type=float)
+        parser.add_argument('--lambda_gradient_penalty', default=lambda_gradient_penalty, type=float)
+        parser.add_argument('--lr', default=lr, type=float)
         return parent_parser
 
     @classmethod
