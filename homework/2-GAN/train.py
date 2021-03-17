@@ -15,7 +15,7 @@ def main(args):
     trainer = Trainer.from_argparse_args(args, logger=logger, callbacks=[model_checkpointer],
                                          plugins=DDPPlugin(find_unused_parameters=True))
     celeba = CelebaDataModule.from_argparse_args(args)
-    model = VanillaStarGAN.from_argparse_args(args, image_shape=celeba.image_shape, attributes=celeba.attributes)
+    model = VanillaStarGAN.from_argparse_args(args, image_shape=celeba.image_shape, label_names=celeba.attributes)
     trainer.fit(model, datamodule=celeba)
 
 

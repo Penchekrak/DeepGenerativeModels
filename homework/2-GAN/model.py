@@ -112,7 +112,7 @@ class TupleFactory(Action):
 class VanillaStarGAN(pl.LightningModule):
     @classmethod
     def add_argparse_args(cls, parent_parser: ArgumentParser) -> ArgumentParser:
-        attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Young']
+        attributes: tp.List[str] = ['Black_Hair', 'Blond_Hair', 'Brown_Hair', 'Male', 'Young', 'Mustache']
         image_shape: tp.Tuple[int, int] = (128, 128)
         conv_dim: int = 64
         repeat_num: int = 6
@@ -121,7 +121,7 @@ class VanillaStarGAN(pl.LightningModule):
         lambda_classification: float = 1.0
         lambda_gradient_penalty: float = 10.0
         lr: float = 1e-4
-        parser = parent_parser.add_argument_group("GoodGAN")
+        parser = parent_parser.add_argument_group("VanillaStarGan")
         parser.add_argument('--attributes', nargs='+', default=attributes)
         parser.add_argument('--image_shape', nargs=2, default=image_shape, action=TupleFactory)
         parser.add_argument('--discriminator_frequency', default=discriminator_frequency, type=int)
@@ -147,7 +147,7 @@ class VanillaStarGAN(pl.LightningModule):
 
     def __init__(
             self,
-            attributes: tp.List[str],
+            label_names: tp.List[str],
             image_shape: tp.Tuple[int, int] = (128, 128),
             conv_dim: int = 64,
             repeat_num: int = 6,
@@ -168,14 +168,14 @@ class VanillaStarGAN(pl.LightningModule):
             conv_dim=conv_dim,
             repeat_num=repeat_num,
             image_shape=image_shape,
-            label_names=attributes,
+            label_names=label_names,
             lr=lr
         ))
 
-        self.desired_labels = torch.eye(len(attributes))
-        self.label_names = attributes
-        self.discriminator = self.build_discriminator(image_shape, conv_dim, len(attributes), repeat_num)
-        self.generator = self.build_generator(image_shape, conv_dim, len(attributes), repeat_num)
+        self.desired_labels = torch.eye(len(label_names))
+        self.label_names = label_names
+        self.discriminator = self.build_discriminator(image_shape, conv_dim, len(label_names), repeat_num)
+        self.generator = self.build_generator(image_shape, conv_dim, len(label_names), repeat_num)
 
         self.accuracy = Accuracy(compute_on_step=False)
         self.fid = FidScore(compute_on_step=False)
