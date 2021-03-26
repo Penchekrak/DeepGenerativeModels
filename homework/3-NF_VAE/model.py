@@ -307,8 +307,7 @@ class RealNVP(LightningModule):
         self.shape = tuple(shape)
         size = c * h * w
         self.prior_mu = nn.Parameter(torch.zeros(size), requires_grad=False)
-        self.prior_sigma = nn.Parameter(torch.eye(size), requires_grad=False)
-        self.prior = torch.distributions.MultivariateNormal(self.prior_mu, self.prior_sigma)
+        self.prior_sigma = nn.Parameter(torch.ones(size), requires_grad=False)
         m = torch.vstack(
             (
                 torch.hstack(
@@ -362,9 +361,8 @@ class RealNVP(LightningModule):
         # using the change of variable formula and log_det_J computed by f
         # return logp: torch.Tensor of len batchSize
         z, log_det_J = self.f(x)
-        self.prior.loc = self.prior.loc.type_as(z)
-        self.prior.covariance_matrix = self.prior.covariance_matrix.type_as(z)
-        logp = self.prior.log_prob(z) + log_det_J
+        lp = gaussian_log_likelihood(z, self.prior_mu, self.prior_sigma)
+        logp = lp + log_det_J
         return logp
 
     def training_step(self, batch, batch_idx, *args, **kwargs):
@@ -386,7 +384,7 @@ class RealNVP(LightningModule):
         Return: Tensor of shape num_samples x D.
         """
         device = next(iter(self.parameters()))[0].device
-        latent_samples = self.prior.sample((num_samples, )).to(device)
+        latent_samples = self.prior_mu + torch.randn((num_samples, *self.prior_mu.shape)) * self.prior_sigma
         samples, _ = self.g(latent_samples)
         return samples
 
