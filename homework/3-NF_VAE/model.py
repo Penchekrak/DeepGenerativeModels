@@ -361,7 +361,7 @@ class RealNVP(LightningModule):
         # using the change of variable formula and log_det_J computed by f
         # return logp: torch.Tensor of len batchSize
         z, log_det_J = self.f(x)
-        lp = gaussian_log_likelihood(z, self.prior_mu, self.prior_sigma)
+        lp = -(z**2).sum(-1)
         logp = lp + log_det_J
         return logp
 
