@@ -140,7 +140,7 @@ class VAE(LightningModule):
         self.generative_mu_head = nn.Sequential(
             nn.Conv2d(32, 3, 1),
             ClampLayer(-10, 10),
-            nn.Tanh()
+            nn.Sigmoid()
         )
         self.generative_sigma_head = nn.Sequential(
             nn.Conv2d(32, 3, 1),
@@ -361,7 +361,7 @@ class RealNVP(LightningModule):
         # using the change of variable formula and log_det_J computed by f
         # return logp: torch.Tensor of len batchSize
         z, log_det_J = self.f(x)
-        lp = -(z**2).sum(-1)
+        lp = -0.5*(z**2).sum(-1)
         logp = lp + log_det_J
         return logp
 
@@ -396,7 +396,7 @@ class RealNVP(LightningModule):
         images, labels = batch
         generated_samples = self.generate_samples(num_samples=images.shape[0])
         generated_samples = generated_samples.unflatten(dim=1,
-                                                        sizes=self.shape)
+                                                        sizes=self.shape).clamp(0, 1)
         self.fid(images, generated_samples)
         if batch_idx == 0:
             return {
