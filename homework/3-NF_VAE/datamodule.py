@@ -2,7 +2,6 @@ import torchvision
 from torch.utils.data import random_split, DataLoader
 from pytorch_lightning import LightningDataModule
 import typing as tp
-import albumentations as A
 from torchvision import transforms as T
 
 

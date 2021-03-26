@@ -1,6 +1,6 @@
 model:
   _target_: model.VAE
-  latent_dim: 30
+  latent_dim: 64
 
 optimizer:
   _target_: torch.optim.Adam
@@ -10,12 +10,12 @@ optimizer:
 datamodule:
   _target_: datamodule.CelebA
 
-  data_dir: /home/anspiridonov/SHAD/GAN/DeepGenerativeModels/homework/2-GAN/celeba
-
+  data_dir: ~/GANS/homework/2-GAN/celeba
+  batch_size: 32
+  num_workers: 16
   train_transforms:
     RandomRotation:
       degrees: 10
-      expand: True
     RandomHorizontalFlip:
       p: 0.5
     Resize:
@@ -26,7 +26,6 @@ datamodule:
   val_transforms:
     RandomRotation:
       degrees: 10
-      expand: True
     RandomHorizontalFlip:
       p: 0.5
     Resize:
@@ -34,9 +33,9 @@ datamodule:
     ToTensor: {}
 
 trainer:
-  limit_train_batches: 1
-  limit_val_batches: 1
-  log_every_n_steps: 1
+  gpus: [3]
+  accelerator: ddp
+  log_every_n_steps: 20
 
 logger:
   project: test
