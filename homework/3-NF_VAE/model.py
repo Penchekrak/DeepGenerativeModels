@@ -417,7 +417,7 @@ class RealNVP(LightningModule):
                 break
 
         generated = self.generate_samples(n_images).unflatten(dim=1,
-                                                              sizes=self.shape)
+                                                              sizes=self.shape).clamp(0, 1)
         self.log('fid score', self.fid)
         self.logger.experiment.log(
             {
