@@ -306,7 +306,9 @@ class RealNVP(LightningModule):
         c, h, w = shape
         self.shape = tuple(shape)
         size = c * h * w
-        self.prior = torch.distributions.MultivariateNormal(torch.zeros(size), torch.eye(size))
+        self.prior_mu = nn.Parameter(torch.zeros(size), requires_grad=False)
+        self.prior_sigma = nn.Parameter(torch.eye(size), requires_grad=False)
+        self.prior = torch.distributions.MultivariateNormal(self.prior_mu, self.prior_sigma)
         m = torch.vstack(
             (
                 torch.hstack(
@@ -360,6 +362,8 @@ class RealNVP(LightningModule):
         # using the change of variable formula and log_det_J computed by f
         # return logp: torch.Tensor of len batchSize
         z, log_det_J = self.f(x)
+        self.prior.loc = self.prior.loc.type_as(z)
+        self.prior.covariance_matrix = self.prior.covariance_matrix.type_as(z)
         logp = self.prior.log_prob(z) + log_det_J
         return logp
 
@@ -381,7 +385,9 @@ class RealNVP(LightningModule):
         Input: num_samples, int - number of samples to generate.
         Return: Tensor of shape num_samples x D.
         """
-        samples, _ = self.g(self.prior.sample((num_samples,)))
+        device = next(iter(self.parameters()))[0].device
+        latent_samples = self.prior.sample((num_samples, )).to(device)
+        samples, _ = self.g(latent_samples)
         return samples
 
     def validation_step(
@@ -414,7 +420,6 @@ class RealNVP(LightningModule):
 
         generated = self.generate_samples(n_images).unflatten(dim=1,
                                                               sizes=self.shape)
-        print(generated.min(), generated.max())
         self.log('fid score', self.fid)
         self.logger.experiment.log(
             {
