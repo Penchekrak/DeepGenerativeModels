@@ -384,7 +384,7 @@ class RealNVP(LightningModule):
         Return: Tensor of shape num_samples x D.
         """
         device = next(iter(self.parameters()))[0].device
-        latent_samples = self.prior_mu + torch.randn((num_samples, *self.prior_mu.shape)) * self.prior_sigma
+        latent_samples = self.prior_mu + torch.randn((num_samples, *self.prior_mu.shape), device=device) * self.prior_sigma
         samples, _ = self.g(latent_samples)
         return samples
 
