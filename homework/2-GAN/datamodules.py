@@ -90,3 +90,6 @@ class CelebaDataModule(LightningDataModule):
     def val_dataloader(self):
         return DataLoader(self.val_dataset, self.batch_size, shuffle=False,
                           num_workers=self.num_workers)
+
+    # def test_dataloader(self) -> Union[DataLoader, List[DataLoader]]:
+    #     pass

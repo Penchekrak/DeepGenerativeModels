@@ -10,14 +10,14 @@ from pytorch_lightning.loggers import WandbLogger
 
 @hydra.main(config_path='configs')
 def main(cfg: DictConfig):
-    logger = WandbLogger(**cfg.logger)
-    logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
-    checkpoint = ModelCheckpoint(**cfg.checkpoint, dirpath=logger.save_dir)
+    # logger = WandbLogger(**cfg.logger)
+    # logger.log_hyperparams(OmegaConf.to_container(cfg, resolve=True))
+    # checkpoint = ModelCheckpoint(**cfg.checkpoint, dirpath=logger.save_dir)
     trainer = Trainer(
-        **cfg.trainer,
-        logger=logger,
-        callbacks=checkpoint,
-        plugins=DDPPlugin(find_unused_parameters=True)
+        # **cfg.trainer,
+        # logger=logger,
+        # callbacks=checkpoint,
+        # plugins=DDPPlugin(find_unused_parameters=True)
     )
     model = instantiate(cfg.model, optimizer_conf=cfg.optimizer)
     datamodule = instantiate(cfg.datamodule)

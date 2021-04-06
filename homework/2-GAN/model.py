@@ -32,9 +32,9 @@ class ResidualBlock(nn.Module):
 class Generator(nn.Module):
     """Generator network."""
 
-    def __init__(self, conv_dim=64, c_dim=5, repeat_num=6):
+    def __init__(self, image_shape, conv_dim=64, c_dim=5, repeat_num=6):
         super(Generator, self).__init__()
-
+        self.image_shape = image_shape
         layers = []
         layers.append(nn.Conv2d(3 + c_dim, conv_dim, kernel_size=7, stride=1, padding=3, bias=False))
         layers.append(nn.InstanceNorm2d(conv_dim, affine=True, track_running_stats=False))
@@ -63,14 +63,19 @@ class Generator(nn.Module):
         layers.append(nn.Tanh())
         self.main = nn.Sequential(*layers)
 
-    def forward(self, x, c):
+    def concat_inputs(
+            self,
+            image_batch: torch.Tensor,
+            label_batch: torch.Tensor
+    ):
+        spatial_labels = label_batch.unsqueeze(-1).unsqueeze(-1).repeat(self.image_shape)
+        return torch.cat((image_batch, spatial_labels), dim=1)
+
+    def forward(self, images, labels):
         # Replicate spatially and concatenate domain information.
         # Note that this type of label conditioning does not work at all if we use reflection padding in Conv2d.
         # This is because instance normalization ignores the shifting (or bias) effect.
-        c = c.view(c.size(0), c.size(1), 1, 1)
-        c = c.repeat(1, 1, x.size(2), x.size(3))
-        x = torch.cat([x, c], dim=1)
-        return self.main(x)
+        return self.main(self.concat_inputs(images, labels))
 
 
 class Discriminator(nn.Module):
@@ -101,6 +106,8 @@ class Discriminator(nn.Module):
 
 
 class TupleFactory(Action):
+    """Makes tuples from command line arguments"""
+
     def __init__(self, option_strings, dest, nargs, **kwargs):
         super(TupleFactory, self).__init__(option_strings, dest, nargs, **kwargs)
         self.dest = dest
@@ -196,7 +203,7 @@ class VanillaStarGAN(pl.LightningModule):
             c_dim: int,
             repeat_num: int
     ) -> nn.Module:
-        return Generator(conv_dim=conv_dim, c_dim=c_dim, repeat_num=repeat_num)
+        return Generator(image_shape=image_shape, conv_dim=conv_dim, c_dim=c_dim, repeat_num=repeat_num)
 
     def adversarial_loss(self, on_real_outputs: torch.Tensor,
                          on_fake_outputs: tp.Optional[torch.Tensor] = None) -> torch.Tensor:
@@ -286,6 +293,7 @@ class VanillaStarGAN(pl.LightningModule):
         })
         return loss
 
+
     def validation_step(
             self,
             batch: tp.Tuple[torch.Tensor, torch.Tensor],
@@ -300,8 +308,14 @@ class VanillaStarGAN(pl.LightningModule):
         self.fid(images, generator_outputs)
         self.accuracy(torch.sigmoid(classification_on_real_outputs), labels)
         # discriminator_on_fake_outputs, classification_on_fake_outputs = self.discriminator(generator_outputs)
+        if batch_idx == 0:
+            return {
+                'real images': images,
+                # 'real labels': labels,
+            }
         return {
-            'real images': images if batch_idx == 0 else None,
+            'real images': None,
+            # 'real labels': None
         }
 
     def validation_epoch_end(self, outputs: tp.List[tp.Any]) -> None:
@@ -309,6 +323,7 @@ class VanillaStarGAN(pl.LightningModule):
         for output in outputs:
             if output['real images'] is not None:
                 control_images = output['real images'][0:n_images]
+                # control_labels = output['real labels'][0:n_images]
                 break
 
         control_images = self.generate_images(control_images, self.desired_labels)

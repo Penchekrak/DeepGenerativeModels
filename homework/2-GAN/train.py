@@ -10,10 +10,14 @@ from datamodules import CelebaDataModule
 
 
 def main(args):
-    logger = WandbLogger(project=args.project_name, save_dir=None, log_model=True)
-    model_checkpointer = ModelCheckpoint(dirpath=logger.save_dir, monitor=args.monitor, save_weights_only=True)
-    trainer = Trainer.from_argparse_args(args, logger=logger, callbacks=[model_checkpointer],
-                                         plugins=DDPPlugin(find_unused_parameters=True))
+    # logger = WandbLogger(project=args.project_name, save_dir=None, log_model=True)
+    # model_checkpointer = ModelCheckpoint(dirpath=logger.save_dir, monitor=args.monitor, save_weights_only=True)
+    trainer = Trainer.from_argparse_args(
+        args,
+        # logger=logger,
+        # callbacks=[model_checkpointer],
+        plugins=DDPPlugin(find_unused_parameters=True)
+    )
     celeba = CelebaDataModule.from_argparse_args(args)
     model = VanillaStarGAN.from_argparse_args(args, image_shape=celeba.image_shape, label_names=celeba.attributes)
     trainer.fit(model, datamodule=celeba)

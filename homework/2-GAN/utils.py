@@ -16,6 +16,9 @@ def create_generator_inputs(
         image_batch: torch.Tensor,
         label_batch: torch.Tensor
 ):
+    c = c.view(c.size(0), c.size(1), 1, 1)
+    c = c.repeat(1, 1, x.size(2), x.size(3))
+    x = torch.cat([x, c], dim=1)
     extra_shape = image_batch.shape[2:]
     spatial_labels = label_batch.unsqueeze(-1).unsqueeze(-1).repeat(extra_shape)
     return torch.cat((image_batch, spatial_labels), dim=1)
